@@ -1,6 +1,7 @@
 import struct
 import numpy as np
 import gzip
+
 try:
     from simple_ml_ext import *
 except:
@@ -19,9 +20,7 @@ def add(x, y):
     Return:
         Sum of x + y
     """
-    ### BEGIN YOUR CODE
-    pass
-    ### END YOUR CODE
+    return x + y
 
 
 def parse_mnist(image_filename, label_filename):
@@ -47,9 +46,16 @@ def parse_mnist(image_filename, label_filename):
                 labels of the examples.  Values should be of type np.uint8 and
                 for MNIST will contain the values 0-9.
     """
-    ### BEGIN YOUR CODE
-    pass
-    ### END YOUR CODE
+    with gzip.open(image_filename, "rb") as f:
+        magic, num, rows, cols = struct.unpack(">IIII", f.read(16))
+        X = np.frombuffer(f.read(), dtype=np.uint8).reshape(num, rows * cols)
+        X = X.astype(np.float32) / 255.0
+
+    with gzip.open(label_filename, "rb") as f:
+        magic, num = struct.unpack(">II", f.read(8))
+        y = np.frombuffer(f.read(), dtype=np.uint8)
+
+    return X, y
 
 
 def softmax_loss(Z, y):
@@ -67,9 +73,10 @@ def softmax_loss(Z, y):
     Returns:
         Average softmax loss over the sample.
     """
-    ### BEGIN YOUR CODE
-    pass
-    ### END YOUR CODE
+    Z_ = np.exp(Z) / np.sum(np.exp(Z), 1, keepdims=True)
+    y_ = np.eye(Z.shape[1])[y]
+    loss = -(1.0 / Z.shape[0]) * np.sum(np.log(Z_) * y_)
+    return loss
 
 
 def softmax_regression_epoch(X, y, theta, lr = 0.1, batch=100):
@@ -90,9 +97,17 @@ def softmax_regression_epoch(X, y, theta, lr = 0.1, batch=100):
     Returns:
         None
     """
-    ### BEGIN YOUR CODE
-    pass
-    ### END YOUR CODE
+    total = X.shape[0]
+    num_classes = theta.shape[1]
+    for b in range(0, total, batch):
+        x_batch = X[b : b + batch]
+        y_batch = y[b : b + batch]
+        x_ = np.matmul(x_batch, theta)
+        I_y = np.eye(num_classes)[y_batch]
+        exp_x = np.exp(x_)
+        Z = exp_x / np.sum(exp_x, 1, keepdims=True)
+        dw = (1.0 / batch) * np.matmul(x_batch.T, (Z - I_y))
+        theta -= lr * dw
 
 
 def nn_epoch(X, y, W1, W2, lr = 0.1, batch=100):
@@ -117,10 +132,29 @@ def nn_epoch(X, y, W1, W2, lr = 0.1, batch=100):
     Returns:
         None
     """
-    ### BEGIN YOUR CODE
-    pass
-    ### END YOUR CODE
+    total = X.shape[0]
+    num_classes = W2.shape[-1]
+    for b in range(0, total, batch):
+        x_batch = X[b : b + batch]
+        y_batch = y[b : b + batch]
 
+        Z1 = np.matmul(x_batch, W1)
+        Z1[Z1 < 0] = 0
+
+        x_ = np.matmul(Z1, W2)
+        exp_x = np.exp(x_)
+        probs = exp_x / np.sum(exp_x, 1, keepdims=True)
+        I_y = np.eye(num_classes)[y_batch]
+        G2 = probs - I_y
+
+        pos = np.zeros_like(Z1)
+        pos[Z1 > 0] = 1
+        G1 = pos * np.matmul(G2, W2.T)
+
+        dw2 = (1.0 / batch) * np.matmul(Z1.T, G2)
+        W2 -= lr * dw2
+        dw1 = (1.0 / batch) * np.matmul(x_batch.T, G1)
+        W1 -= lr * dw1
 
 
 ### CODE BELOW IS FOR ILLUSTRATION, YOU DO NOT NEED TO EDIT

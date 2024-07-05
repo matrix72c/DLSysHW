@@ -246,9 +246,11 @@ class NDArray:
             NDArray : reshaped array; this will point to thep
         """
 
-        ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
-        ### END YOUR SOLUTION
+        if prod(self.shape) != prod(new_shape):
+            raise ValueError("Cannot reshape array to different size")
+        if not self.is_compact():
+            raise ValueError("Can only reshape compact arrays")
+        return self.as_strided(shape=new_shape, strides=self.compact_strides(new_shape))
 
     def permute(self, new_axes):
         """
@@ -271,9 +273,12 @@ class NDArray:
             strides changed).
         """
 
-        ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
-        ### END YOUR SOLUTION
+        dims = len(self.shape)
+        if new_axes == tuple(range(dims)):
+            return self
+        new_shape = tuple([self.shape[i] for i in new_axes])
+        new_strides = tuple([self.strides[i] for i in new_axes])
+        return self.as_strided(shape=new_shape, strides=new_strides)
 
     def broadcast_to(self, new_shape):
         """
@@ -295,9 +300,22 @@ class NDArray:
             point to the same memory as the original array.
         """
 
-        ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
-        ### END YOUR SOLUTION
+        assert len(new_shape) >= len(self.shape), "New shape must have equal or more dimensions"
+        new_strides = list(self.strides)
+
+        # Starting from the end, adjust the strides for broadcasting
+        for i in range(1, len(self.shape)+1):
+            if i > len(new_shape):
+                break
+
+            if self.shape[-i] == 1:
+                new_strides[-i] = 0
+            else:
+                assert new_shape[-i] == self.shape[-i], f"Dimension mismatch: cannot broadcast {self.shape} to {new_shape}"
+
+        # For new leading dimensions, set stride to 0 (broadcasting new dimensions)
+        new_strides = [0] * (len(new_shape) - len(self.shape)) + new_strides
+        return NDArray.make(new_shape, tuple(new_strides), self.device, self._handle)
 
     ### Get and set elements
 
@@ -362,9 +380,15 @@ class NDArray:
         )
         assert len(idxs) == self.ndim, "Need indexes equal to number of dimensions"
 
-        ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
-        ### END YOUR SOLUTION
+        offset = 0
+        shape = []
+        strides = []
+        for i in range(len(idxs)):
+            s = idxs[i]
+            shape.append((s.stop - s.start - 1) // s.step + 1)
+            strides.append(self.strides[i] * s.step)
+            offset += self.strides[i] * s.start
+        return self.make(shape=tuple(shape), strides=tuple(strides), device=self.device, handle=self._handle, offset=offset)
 
     def __setitem__(self, idxs, other):
         """Set the values of a view into an array, using the same semantics
@@ -572,9 +596,14 @@ class NDArray:
         Flip this ndarray along the specified axes.
         Note: compact() before returning.
         """
-        ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
-        ### END YOUR SOLUTION
+        strides = list(self.strides)
+        if isinstance(axes, int):
+            axes = [axes]
+        offset = 0
+        for ax in axes:
+            strides[ax] = -strides[ax]
+            offset += (self.shape[ax] - 1) * self.strides[ax]
+        return NDArray.make(self.shape, strides=tuple(strides), device=self.device, handle=self._handle, offset=offset).compact()
 
     def pad(self, axes):
         """
@@ -582,9 +611,12 @@ class NDArray:
         which lists for _all_ axes the left and right padding amount, e.g.,
         axes = ( (0, 0), (1, 1), (0, 0)) pads the middle axis with a 0 on the left and right side.
         """
-        ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
-        ### END YOUR SOLUTION
+        assert len(axes) == len(self.shape)
+        new_shape = tuple([l + r + n for (l, r), n in zip(axes, self.shape)])
+        arr = self.device.full(new_shape, 0)
+        access = tuple([slice(l, l + n) for (l, _), n in zip(axes, self.shape)])
+        arr[access] = self
+        return arr
 
 def array(a, dtype="float32", device=None):
     """Convenience methods to match numpy a bit more closely."""
@@ -633,3 +665,8 @@ def sum(a, axis=None, keepdims=False):
 
 def flip(a, axes):
     return a.flip(axes)
+
+def transpose(a, axes=None):
+    if axes is None:
+        axes = tuple(range(a.ndim))[::-1]
+    return a.permute(axes)

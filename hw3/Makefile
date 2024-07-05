@@ -5,7 +5,7 @@ all: lib
 
 lib:
 	@mkdir -p build
-	@cd build; cmake ..
+	@cd build; cmake -DPython_EXECUTABLE=`which python3` ..
 	@cd build; $(MAKE)
 
 format:
